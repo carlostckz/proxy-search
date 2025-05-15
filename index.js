@@ -23,14 +23,15 @@ app.get('/search', async (req, res) => {
     const url = `https://html.duckduckgo.com/html?q=${encodeURIComponent(q)}`;
     const { data } = await axios.get(url, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
+        'User-Agent': 'Mozilla/5.0'
       }
     });
+
     const $ = cheerio.load(data);
 
-    let resultsHtml = `<h1>Resultados da busca para: "${q}"</h1><ul>`;
+    let resultsHtml = `<h1>Resultados para: "${q}"</h1><ul>`;
 
-    $('a.result__a, a.result-link').each((i, el) => {
+    $('a.result__a, a.result-link').each((_, el) => {
       let href = $(el).attr('href');
       let title = $(el).text();
 
@@ -61,19 +62,24 @@ app.get('/proxy', async (req, res) => {
 
     const { data } = await axios.get(normalizedUrl, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
+        'User-Agent': 'Mozilla/5.0'
       }
     });
 
     const $ = cheerio.load(data);
 
-    // Remove meta refresh para evitar redirecionamento automático
+    // Remove meta refresh (redirecionamento automático)
     $('meta[http-equiv="refresh"]').remove();
 
-    // Remove scripts para evitar redirecionamento via JS
-    $('script').remove();
+    // Remove apenas scripts perigosos que redirecionam
+    $('script').each((_, el) => {
+      const content = $(el).html();
+      if (content && /location\.href|window\.location|document\.location/.test(content)) {
+        $(el).remove();
+      }
+    });
 
-    // Reescreve todos os links para usar o proxy e remove target/rel
+    // Reescreve links
     $('a').each((_, el) => {
       let href = $(el).attr('href');
       if (href && !href.startsWith('javascript:') && !href.startsWith('#')) {
@@ -88,7 +94,7 @@ app.get('/proxy', async (req, res) => {
       }
     });
 
-    // Reescreve todas as imagens para usar proxy de imagens
+    // Reescreve imagens
     $('img').each((_, el) => {
       let src = $(el).attr('src');
       if (src) {
@@ -115,16 +121,17 @@ app.get('/proxy/image', async (req, res) => {
     const response = await axios.get(imageUrl, {
       responseType: 'stream',
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
+        'User-Agent': 'Mozilla/5.0'
       }
     });
 
     res.status(response.status);
 
-    Object.entries(response.headers).forEach(([key, value]) => {
-      if (key.toLowerCase() === 'content-encoding') return;
-      res.setHeader(key, value);
-    });
+    for (const [key, value] of Object.entries(response.headers)) {
+      if (key.toLowerCase() !== 'content-encoding') {
+        res.setHeader(key, value);
+      }
+    }
 
     response.data.pipe(res);
   } catch (err) {
@@ -134,4 +141,4 @@ app.get('/proxy/image', async (req, res) => {
 });
 
 const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => console.log(`Proxy rodando na porta ${PORT}`));
+app.listen(PORT, () => console.log(`✅ Proxy rodando em http://localhost:${PORT}`));
