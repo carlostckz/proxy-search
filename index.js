@@ -73,6 +73,8 @@ app.get('/proxy', async (req, res) => {
         try {
           href = new URL(href, normalizedUrl).toString();
           $(el).attr('href', `/proxy?url=${encodeURIComponent(href)}`);
+          $(el).removeAttr('target'); // abrir na mesma aba
+          $(el).removeAttr('rel');
         } catch {
           $(el).removeAttr('href');
         }
