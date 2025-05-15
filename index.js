@@ -20,19 +20,26 @@ app.get('/search', async (req, res) => {
   if (!q) return res.redirect('/');
 
   try {
-    const url = `https://duckduckgo.com/html/?q=${encodeURIComponent(q)}`;
-    const { data } = await axios.get(url);
+    const url = `https://html.duckduckgo.com/html?q=${encodeURIComponent(q)}`;
+    const { data } = await axios.get(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
+      }
+    });
     const $ = cheerio.load(data);
 
     let resultsHtml = `<h1>Resultados da busca para: "${q}"</h1><ul>`;
-    $('.result__a').each((i, el) => {
+
+    $('a.result__a, a.result-link').each((i, el) => {
       let href = $(el).attr('href');
       let title = $(el).text();
 
-      const proxiedUrl = `/proxy?url=${encodeURIComponent(href)}`;
-
-      resultsHtml += `<li><a href="${proxiedUrl}">${title}</a></li>`;
+      if (href && title) {
+        const proxiedUrl = `/proxy?url=${encodeURIComponent(href)}`;
+        resultsHtml += `<li><a href="${proxiedUrl}">${title}</a></li>`;
+      }
     });
+
     resultsHtml += '</ul><a href="/">Nova busca</a>';
 
     res.send(resultsHtml);
