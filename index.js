@@ -49,30 +49,45 @@ app.get('/search', async (req, res) => {
 });
 
 app.get('/proxy', async (req, res) => {
-  const targetUrl = req.query.url;
+  let targetUrl = req.query.url;
   if (!targetUrl) return res.status(400).send('URL não informada.');
 
   try {
-    const { data } = await axios.get(targetUrl, {
+    if (!/^https?:\/\//i.test(targetUrl)) {
+      targetUrl = 'http://' + targetUrl;
+    }
+
+    const normalizedUrl = new URL(targetUrl).toString();
+
+    const { data } = await axios.get(normalizedUrl, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
       }
     });
+
     const $ = cheerio.load(data);
 
     $('a').each((_, el) => {
       let href = $(el).attr('href');
       if (href && !href.startsWith('javascript:') && !href.startsWith('#')) {
-        href = new URL(href, targetUrl).toString();
-        $(el).attr('href', `/proxy?url=${encodeURIComponent(href)}`);
+        try {
+          href = new URL(href, normalizedUrl).toString();
+          $(el).attr('href', `/proxy?url=${encodeURIComponent(href)}`);
+        } catch {
+          $(el).removeAttr('href');
+        }
       }
     });
 
     $('img').each((_, el) => {
       let src = $(el).attr('src');
       if (src) {
-        src = new URL(src, targetUrl).toString();
-        $(el).attr('src', `/proxy/image?url=${encodeURIComponent(src)}`);
+        try {
+          src = new URL(src, normalizedUrl).toString();
+          $(el).attr('src', `/proxy/image?url=${encodeURIComponent(src)}`);
+        } catch {
+          $(el).removeAttr('src');
+        }
       }
     });
 
