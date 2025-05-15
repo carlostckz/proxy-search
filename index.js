@@ -67,13 +67,20 @@ app.get('/proxy', async (req, res) => {
 
     const $ = cheerio.load(data);
 
+    // Remove meta refresh para evitar redirecionamento automático
+    $('meta[http-equiv="refresh"]').remove();
+
+    // Remove scripts para evitar redirecionamento via JS
+    $('script').remove();
+
+    // Reescreve todos os links para usar o proxy e remove target/rel
     $('a').each((_, el) => {
       let href = $(el).attr('href');
       if (href && !href.startsWith('javascript:') && !href.startsWith('#')) {
         try {
           href = new URL(href, normalizedUrl).toString();
           $(el).attr('href', `/proxy?url=${encodeURIComponent(href)}`);
-          $(el).removeAttr('target'); // abrir na mesma aba
+          $(el).removeAttr('target');
           $(el).removeAttr('rel');
         } catch {
           $(el).removeAttr('href');
@@ -81,6 +88,7 @@ app.get('/proxy', async (req, res) => {
       }
     });
 
+    // Reescreve todas as imagens para usar proxy de imagens
     $('img').each((_, el) => {
       let src = $(el).attr('src');
       if (src) {
