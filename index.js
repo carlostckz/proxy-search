@@ -3,75 +3,19 @@ const axios = require('axios');
 const cheerio = require('cheerio');
 
 const app = express();
-app.use(express.urlencoded({ extended: true }));
 
-app.get('/', (req, res) => {
-  res.send(`
-    <h1>Proxy de Pesquisa</h1>
-    <form method="GET" action="/search">
-      <input name="q" placeholder="Digite sua pesquisa" style="width:300px" required/>
-      <button>Buscar</button>
-    </form>
-  `);
-});
-
-app.get('/search', async (req, res) => {
-  const q = req.query.q;
-  if (!q) return res.redirect('/');
-
+app.get('/', async (req, res) => {
+  const targetUrl = 'https://now.gg';
   try {
-    const url = `https://html.duckduckgo.com/html?q=${encodeURIComponent(q)}`;
-    const { data } = await axios.get(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0'
-      }
+    const { data } = await axios.get(targetUrl, {
+      headers: { 'User-Agent': 'Mozilla/5.0' }
     });
 
     const $ = cheerio.load(data);
+    const baseUrl = new URL(targetUrl).origin;
 
-    let resultsHtml = `<h1>Resultados para: "${q}"</h1><ul>`;
-
-    $('a.result__a, a.result-link').each((_, el) => {
-      let href = $(el).attr('href');
-      let title = $(el).text();
-
-      if (href && title) {
-        const proxiedUrl = `/proxy?url=${encodeURIComponent(href)}`;
-        resultsHtml += `<li><a href="${proxiedUrl}">${title}</a></li>`;
-      }
-    });
-
-    resultsHtml += '</ul><a href="/">Nova busca</a>';
-
-    res.send(resultsHtml);
-  } catch (err) {
-    res.status(500).send('Erro na busca: ' + err.message);
-  }
-});
-
-app.get('/proxy', async (req, res) => {
-  let targetUrl = req.query.url;
-  if (!targetUrl) return res.status(400).send('URL não informada.');
-
-  try {
-    if (!/^https?:\/\//i.test(targetUrl)) {
-      targetUrl = 'http://' + targetUrl;
-    }
-
-    const normalizedUrl = new URL(targetUrl).toString();
-
-    const { data } = await axios.get(normalizedUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0'
-      }
-    });
-
-    const $ = cheerio.load(data);
-
-    // Remove meta refresh (redirecionamento automático)
+    // Remover scripts de redirecionamento automático
     $('meta[http-equiv="refresh"]').remove();
-
-    // Remove apenas scripts perigosos que redirecionam
     $('script').each((_, el) => {
       const content = $(el).html();
       if (content && /location\.href|window\.location|document\.location/.test(content)) {
@@ -79,27 +23,77 @@ app.get('/proxy', async (req, res) => {
       }
     });
 
-    // Reescreve links
+    // Reescrever links
     $('a').each((_, el) => {
       let href = $(el).attr('href');
       if (href && !href.startsWith('javascript:') && !href.startsWith('#')) {
         try {
-          href = new URL(href, normalizedUrl).toString();
+          href = new URL(href, baseUrl).toString();
           $(el).attr('href', `/proxy?url=${encodeURIComponent(href)}`);
           $(el).removeAttr('target');
-          $(el).removeAttr('rel');
         } catch {
           $(el).removeAttr('href');
         }
       }
     });
 
-    // Reescreve imagens
+    // Reescrever imagens
     $('img').each((_, el) => {
       let src = $(el).attr('src');
       if (src) {
         try {
-          src = new URL(src, normalizedUrl).toString();
+          src = new URL(src, baseUrl).toString();
+          $(el).attr('src', `/proxy/image?url=${encodeURIComponent(src)}`);
+        } catch {
+          $(el).removeAttr('src');
+        }
+      }
+    });
+
+    res.send($.html());
+  } catch (err) {
+    res.status(500).send('Erro ao carregar now.gg: ' + err.message);
+  }
+});
+
+app.get('/proxy', async (req, res) => {
+  const targetUrl = req.query.url;
+  if (!targetUrl) return res.status(400).send('URL inválida');
+
+  try {
+    const { data } = await axios.get(targetUrl, {
+      headers: { 'User-Agent': 'Mozilla/5.0' }
+    });
+
+    const $ = cheerio.load(data);
+    const baseUrl = new URL(targetUrl).origin;
+
+    $('meta[http-equiv="refresh"]').remove();
+    $('script').each((_, el) => {
+      const content = $(el).html();
+      if (content && /location\.href|window\.location/.test(content)) {
+        $(el).remove();
+      }
+    });
+
+    $('a').each((_, el) => {
+      let href = $(el).attr('href');
+      if (href && !href.startsWith('javascript:') && !href.startsWith('#')) {
+        try {
+          href = new URL(href, baseUrl).toString();
+          $(el).attr('href', `/proxy?url=${encodeURIComponent(href)}`);
+          $(el).removeAttr('target');
+        } catch {
+          $(el).removeAttr('href');
+        }
+      }
+    });
+
+    $('img').each((_, el) => {
+      let src = $(el).attr('src');
+      if (src) {
+        try {
+          src = new URL(src, baseUrl).toString();
           $(el).attr('src', `/proxy/image?url=${encodeURIComponent(src)}`);
         } catch {
           $(el).removeAttr('src');
@@ -115,18 +109,15 @@ app.get('/proxy', async (req, res) => {
 
 app.get('/proxy/image', async (req, res) => {
   const imageUrl = req.query.url;
-  if (!imageUrl) return res.status(400).send('URL da imagem não informada.');
+  if (!imageUrl) return res.status(400).send('URL da imagem inválida.');
 
   try {
     const response = await axios.get(imageUrl, {
       responseType: 'stream',
-      headers: {
-        'User-Agent': 'Mozilla/5.0'
-      }
+      headers: { 'User-Agent': 'Mozilla/5.0' }
     });
 
     res.status(response.status);
-
     for (const [key, value] of Object.entries(response.headers)) {
       if (key.toLowerCase() !== 'content-encoding') {
         res.setHeader(key, value);
@@ -135,10 +126,11 @@ app.get('/proxy/image', async (req, res) => {
 
     response.data.pipe(res);
   } catch (err) {
-    console.error('Erro ao carregar imagem:', err.message);
-    res.status(500).send('Erro ao carregar imagem');
+    res.status(500).send('Erro ao carregar imagem: ' + err.message);
   }
 });
 
-const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => console.log(`✅ Proxy rodando em http://localhost:${PORT}`));
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`✅ Proxy direto para now.gg: http://localhost:${PORT}`);
+});
