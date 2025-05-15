@@ -15,7 +15,6 @@ app.get('/', async (req, res) => {
     const page = await browser.newPage();
     await page.setUserAgent('Mozilla/5.0');
     await page.goto(targetUrl, { waitUntil: 'networkidle2', timeout: 60000 });
-
     const html = await page.content();
     res.send(html);
   } catch (err) {
